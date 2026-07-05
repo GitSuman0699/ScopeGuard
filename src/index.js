@@ -633,12 +633,22 @@ async function runScopeCheckPipeline(client, channelId, userId, textToCheck, res
   const authResult = await app.client.auth.test({ token: config.slack.botToken });
   botUserId = authResult.user_id;
 
-  // Health check endpoint for UptimeRobot (keeps Render from sleeping)
-  app.receiver.router.get('/healthz', (req, res) => {
-    res.status(200).send('ok');
-  });
+  await app.start();
 
-  await app.start(process.env.PORT || 3000);
+  // Standalone health check server for UptimeRobot (keeps Render from sleeping)
+  const http = await import('http');
+  const healthPort = process.env.PORT || 3000;
+  http.createServer((req, res) => {
+    if (req.url === '/healthz') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  }).listen(healthPort, () => {
+    console.log(`Health check server listening on port ${healthPort}`);
+  });
 
   console.log(`
   ╔═══════════════════════════════════╗
