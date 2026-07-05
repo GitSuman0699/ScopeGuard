@@ -12,7 +12,7 @@ import { getProjectMapping, getAllProjectMappings, getRecentDriftLogs } from './
 import { initDatabase } from './database.js';
 
 // Initialize database for standalone MCP usage
-initDatabase();
+await initDatabase();
 
 const server = new McpServer({
   name: 'scopeguard-mcp',
@@ -28,7 +28,7 @@ server.tool(
   'Fetch the Statement of Work (SOW) document for a specific project by its SOW filename. Returns the full SOW content.',
   { sowFilename: z.string().describe('The SOW filename (e.g., "acme-corp.md")') },
   async ({ sowFilename }) => {
-    const content = loadSOW(sowFilename);
+    const content = await loadSOW(sowFilename);
     if (!content) {
       return {
         content: [{ type: 'text', text: `SOW file "${sowFilename}" not found.` }],
@@ -47,7 +47,7 @@ server.tool(
   'List all available Statement of Work (SOW) files.',
   {},
   async () => {
-    const files = listSOWFiles();
+    const files = await listSOWFiles();
     if (files.length === 0) {
       return {
         content: [{ type: 'text', text: 'No SOW files found in data/sows/ directory.' }],
@@ -66,7 +66,7 @@ server.tool(
   'Get the project and SOW mapping for a specific Slack channel ID.',
   { channelId: z.string().describe('The Slack channel ID') },
   async ({ channelId }) => {
-    const mapping = getProjectMapping(channelId);
+    const mapping = await getProjectMapping(channelId);
     if (!mapping) {
       return {
         content: [{ type: 'text', text: `No project mapped to channel ${channelId}.` }],
@@ -88,7 +88,7 @@ server.tool(
     limit: z.number().optional().describe('Max results to return (default 10)'),
   },
   async ({ projectId, limit }) => {
-    const logs = getRecentDriftLogs(projectId, limit || 10);
+    const logs = await getRecentDriftLogs(projectId, limit || 10);
     if (logs.length === 0) {
       return {
         content: [{ type: 'text', text: `No drift evaluations found for project "${projectId}".` }],
@@ -117,7 +117,7 @@ server.tool(
   'List all projects and their Slack channel mappings.',
   {},
   async () => {
-    const mappings = getAllProjectMappings();
+    const mappings = await getAllProjectMappings();
     if (mappings.length === 0) {
       return {
         content: [{ type: 'text', text: 'No projects configured yet.' }],
