@@ -1,0 +1,52 @@
+display_information:
+  name: ScopeGuard
+  description: AI-powered scope drift detection for project management
+  background_color: "#1a1a2e"
+  long_description: "ScopeGuard monitors your client channels and automatically detects when a client requests something outside the agreed Statement of Work. It privately alerts the PM with a detailed analysis and a draft Change Request reply, all without the client ever seeing it."
+
+features:
+  bot_user:
+    display_name: ScopeGuard
+    always_online: true
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  slash_commands:
+    - command: /scopeguard
+      description: Manage ScopeGuard - setup projects, check scope, view status
+      usage_hint: "[setup|check|status|projects|help]"
+      should_escape: false
+  shortcuts:
+    - name: Check Scope
+      type: message
+      callback_id: check_scope_shortcut
+      description: Check if this message is within the project scope
+
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - chat:write
+      - commands
+      - files:read
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - im:write
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
