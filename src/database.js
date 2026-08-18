@@ -101,6 +101,13 @@ export async function deleteProjectMapping(channelId) {
   await pool.query('DELETE FROM project_mappings WHERE channel_id = $1', [channelId]);
 }
 
+/**
+ * Update the PM for a project mapping.
+ */
+export async function updateProjectPM(channelId, newPmUserId) {
+  await pool.query('UPDATE project_mappings SET pm_user_id = $1, updated_at = CURRENT_TIMESTAMP WHERE channel_id = $2', [newPmUserId, channelId]);
+}
+
 // ── Drift Log CRUD ──
 
 /**

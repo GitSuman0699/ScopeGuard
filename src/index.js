@@ -12,7 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { config, validateConfig } from './config.js';
-import { initDatabase, getProjectMapping, setProjectMapping, saveDriftLog, getAllProjectMappings } from './database.js';
+import { initDatabase, getProjectMapping, setProjectMapping, deleteProjectMapping, updateProjectPM, saveDriftLog, getAllProjectMappings } from './database.js';
 import { initScopeEngine, classifyIntent, analyzeDrift, generateCRDraft } from './scope-engine.js';
 import { loadSOW, listSOWFiles, clearSOWCache, saveSOW } from './sow-manager.js';
 import {
@@ -163,6 +163,54 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     });
     return;
   }
+  // ── /scopeguard remove ──
+  if (subcommand === 'remove') {
+    const mapping = await getProjectMapping(command.channel_id);
+    if (!mapping) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'No project is linked to this channel.',
+      });
+      return;
+    }
+
+    await deleteProjectMapping(command.channel_id);
+    await respond({
+      response_type: 'ephemeral',
+      text: `*Project "${mapping.project_name}" has been unlinked from this channel.*\nScopeGuard will no longer monitor messages here.`,
+    });
+    return;
+  }
+
+  // ── /scopeguard reassign ──
+  if (subcommand === 'reassign') {
+    const mapping = await getProjectMapping(command.channel_id);
+    if (!mapping) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'No project is linked to this channel.',
+      });
+      return;
+    }
+
+    const newPmMatch = args[1]?.match(/<@([^|>]+)/);
+    if (!newPmMatch) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Please mention the new PM. Example: `/scopeguard reassign @username`',
+      });
+      return;
+    }
+
+    const newPmId = newPmMatch[1];
+    await updateProjectPM(command.channel_id, newPmId);
+
+    await respond({
+      response_type: 'ephemeral',
+      text: `*Project Manager Reassigned*\nThe PM for project "${mapping.project_name}" has been updated to <@${newPmId}>. They will now receive all drift alerts for this channel.`,
+    });
+    return;
+  }
 
   // ── /scopeguard help (default) ──
   await respond({
@@ -181,6 +229,8 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
             '`/scopeguard check <request>` — Manually check a request against the SOW',
             '`/scopeguard status` — Show the project mapped to this channel',
             '`/scopeguard projects` — List all configured projects',
+            '`/scopeguard reassign <@user>` — Change the PM for this channel',
+            '`/scopeguard remove` — Unlink the project from this channel',
             '`/scopeguard help` — Show this help message',
           ].join('\n'),
         },
