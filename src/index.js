@@ -478,6 +478,11 @@ app.event('app_mention', async ({ event, client }) => {
     return;
   }
 
+  // Only the PM can use @ScopeGuard mentions
+  if (event.user !== mapping.pm_user_id) {
+    return;
+  }
+
   // Extract text after the mention
   const mentionText = event.text.replace(/<@[A-Z0-9]+>/g, '').trim();
 
