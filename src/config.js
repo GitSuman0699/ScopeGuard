@@ -16,7 +16,7 @@ export const config = {
     model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
   },
 
-  dbPath: process.env.DB_PATH || './data/scopeguard.db',
+  databaseUrl: process.env.DATABASE_URL,
 };
 
 /**
@@ -27,10 +27,11 @@ export function validateConfig() {
   if (!config.slack.botToken) missing.push('SLACK_BOT_TOKEN');
   if (!config.slack.appToken) missing.push('SLACK_APP_TOKEN');
   if (!config.groq.apiKey) missing.push('GROQ_API_KEY');
+  if (!config.databaseUrl) missing.push('DATABASE_URL');
 
   if (missing.length > 0) {
     console.error(`\n❌ Missing required environment variables:\n   ${missing.join(', ')}\n`);
-    console.error('   Copy .env.example to .env and fill in the values.\n');
+    console.error('   Please provide a PostgreSQL connection string in DATABASE_URL.\n');
     process.exit(1);
   }
 }

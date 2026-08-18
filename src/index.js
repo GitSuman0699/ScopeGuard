@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { config, validateConfig } from './config.js';
 import { initDatabase, getProjectMapping, setProjectMapping, saveDriftLog, getAllProjectMappings } from './database.js';
 import { initScopeEngine, classifyIntent, analyzeDrift, generateCRDraft } from './scope-engine.js';
-import { loadSOW, listSOWFiles, clearSOWCache } from './sow-manager.js';
+import { loadSOW, listSOWFiles, clearSOWCache, saveSOW } from './sow-manager.js';
 import {
   renderDriftAlert,
   renderInScopeNotice,
@@ -29,7 +29,7 @@ const SOWS_DIR = path.join(__dirname, '..', 'data', 'sows');
 // ── Bootstrap ──
 
 validateConfig();
-initDatabase();
+await initDatabase();
 initScopeEngine();
 
 const app = new App({
@@ -56,14 +56,14 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     if (parts.length < 2) {
       await respond({
         response_type: 'ephemeral',
-        text: '*Usage:* Upload a SOW file (.txt, .md, or .pdf) in this conversation with the message:\n`upload <project-name>`\n\n*Example:*\n1. Come to this DM or any channel\n2. Type `upload acme-corp` as your message\n3. Attach the SOW file (.txt, .md, or .pdf)\n4. Send it\n\nScopeGuard will save it and you can then use `/scopeguard setup` to link it to a channel.',
+        text: '*Usage:* Upload a SOW file (.txt, .md, or .pdf) with the message `upload <project-name>`.\n\n*Steps:*\n1. Open this DM or any channel with ScopeGuard\n2. Type `upload <project-name>` as your message\n3. Attach the SOW file (.txt, .md, or .pdf)\n4. Send the message\n\nOnce uploaded, use `/scopeguard setup` in a channel to link the SOW to that channel.',
       });
       return;
     }
 
     await respond({
       response_type: 'ephemeral',
-      text: `To upload the SOW for *${parts[1]}*, send a message in this DM with:\n\n1. Type \`upload ${parts[1]}\` as your message\n2. Attach the SOW file (.txt, .md, or .pdf)\n3. Hit send`,
+      text: `To upload the SOW for *${parts[1]}*, send a message in this DM with:\n\n1. Type \`upload ${parts[1]}\` as your message\n2. Attach the SOW file (.txt, .md, or .pdf)\n3. Send the message`,
     });
     return;
   }
@@ -73,13 +73,13 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     const parts = command.text.trim().split(/\s+/);
     // Expected: setup <project-name> <sow-filename>
     if (parts.length < 3) {
-      const sowFiles = listSOWFiles();
+      const sowFiles = await listSOWFiles();
       await respond({
         response_type: 'ephemeral',
         text: `*Usage:* \`/scopeguard setup <project-name> <sow-filename>\`\n\n*Available SOW files:*\n${
           sowFiles.length > 0
             ? sowFiles.map((f) => `• \`${f}\``).join('\n')
-            : '_No SOW files found. Add .md files to data/sows/_'
+            : '_No SOW files found._'
         }\n\n*Example:*\n\`/scopeguard setup acme-corp acme-corp.md\``,
       });
       return;
@@ -89,17 +89,18 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     const sowFilename = parts[2];
 
     // Verify the SOW file exists
-    const sowContent = loadSOW(sowFilename);
+    const sowContent = await loadSOW(sowFilename);
     if (!sowContent) {
+      const sowFiles = await listSOWFiles();
       await respond({
         response_type: 'ephemeral',
-        text: `SOW file \`${sowFilename}\` not found. Available files:\n${listSOWFiles().map((f) => `• \`${f}\``).join('\n')}`,
+        text: `SOW file \`${sowFilename}\` not found. Available files:\n${sowFiles.map((f) => `• \`${f}\``).join('\n')}`,
       });
       return;
     }
 
     // Save the mapping
-    setProjectMapping(command.channel_id, projectName, projectName, sowFilename, command.user_id);
+    await setProjectMapping(command.channel_id, projectName, projectName, sowFilename, command.user_id);
 
     await respond({
       response_type: 'ephemeral',
@@ -110,7 +111,7 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
 
   // ── /scopeguard status ──
   if (subcommand === 'status') {
-    const mapping = getProjectMapping(command.channel_id);
+    const mapping = await getProjectMapping(command.channel_id);
     if (!mapping) {
       await respond({
         response_type: 'ephemeral',
@@ -119,7 +120,7 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     } else {
       await respond({
         response_type: 'ephemeral',
-        text: `*ScopeGuard Active*\nProject: *${mapping.project_name}*\nSOW: \`${mapping.sow_filename}\`\nPM: <@${mapping.pm_user_id}>`,
+        text: `*ScopeGuard — Active*\n*Project:* ${mapping.project_name}\n*SOW:* \`${mapping.sow_filename}\`\n*Project Manager:* <@${mapping.pm_user_id}>`,
       });
     }
     return;
@@ -144,17 +145,17 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
 
   // ── /scopeguard projects ──
   if (subcommand === 'projects') {
-    const mappings = getAllProjectMappings();
+    const mappings = await getAllProjectMappings();
     if (mappings.length === 0) {
       await respond({
         response_type: 'ephemeral',
-        text: 'No projects configured yet. Use `/scopeguard setup` in a channel.',
+        text: 'No projects are configured yet. Use `/scopeguard setup` in a channel to get started.',
       });
       return;
     }
 
     const lines = mappings.map(
-      (m) => `• *${m.project_name}* — SOW: \`${m.sow_filename}\` — PM: <@${m.pm_user_id}>`
+      (m) => `- *${m.project_name}* — SOW: \`${m.sow_filename}\` — PM: <@${m.pm_user_id}>`
     );
     await respond({
       response_type: 'ephemeral',
@@ -169,7 +170,7 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
     blocks: [
       {
         type: 'header',
-        text: { type: 'plain_text', text: 'ScopeGuard — Commands', emoji: true },
+        text: { type: 'plain_text', text: 'ScopeGuard — Commands', emoji: false },
       },
       {
         type: 'section',
@@ -190,7 +191,7 @@ app.command('/scopeguard', async ({ command, ack, respond, client }) => {
         elements: [
           {
             type: 'mrkdwn',
-            text: 'ScopeGuard also passively monitors messages in mapped channels and alerts you when it detects a potential scope drift.',
+            text: 'ScopeGuard passively monitors messages in mapped channels and alerts you when it detects potential scope drift.',
           },
         ],
       },
@@ -210,7 +211,7 @@ app.shortcut('check_scope_shortcut', async ({ shortcut, ack, client }) => {
   const messageText = shortcut.message.text;
   const pmUserId = shortcut.user.id;
 
-  const mapping = getProjectMapping(channelId);
+  const mapping = await getProjectMapping(channelId);
 
   if (!mapping) {
     await client.chat.postEphemeral({
@@ -227,18 +228,18 @@ app.shortcut('check_scope_shortcut', async ({ shortcut, ack, client }) => {
     channel: channelId,
     user: pmUserId,
     blocks: renderThinking(),
-    text: 'Analyzing...',
+    text: 'Analyzing request...',
   });
 
   try {
     const intent = { isFeatureRequest: true, confidence: 1.0, extractedRequest: messageText, reasoning: 'Manual shortcut check' };
-    const sowText = loadSOW(mapping.sow_filename);
+    const sowText = await loadSOW(mapping.sow_filename);
 
     if (!sowText) {
       await client.chat.postEphemeral({
         channel: channelId,
         user: pmUserId,
-        text: `SOW file \`${mapping.sow_filename}\` is missing.`,
+        text: `The SOW file \`${mapping.sow_filename}\` could not be found. Please re-upload the SOW document.`,
       });
       return;
     }
@@ -264,7 +265,7 @@ app.shortcut('check_scope_shortcut', async ({ shortcut, ack, client }) => {
       text: `Scope Check: ${drift.verdict}`,
     });
 
-    saveDriftLog({
+    await saveDriftLog({
       channelId,
       projectId: mapping.project_id,
       messageTs: shortcut.message.ts,
@@ -281,7 +282,7 @@ app.shortcut('check_scope_shortcut', async ({ shortcut, ack, client }) => {
     await client.chat.postEphemeral({
       channel: channelId,
       user: pmUserId,
-      text: `Error: ${error.message}`,
+      text: `An error occurred during analysis: ${error.message}`,
     });
   }
 });
@@ -304,7 +305,7 @@ app.use(async ({ logger, payload, next }) => {
 app.message(/^upload\s+(.+)/i, async ({ message, context, client, say }) => {
   // Only handle messages with files
   if (!message.files || message.files.length === 0) {
-    await say('Please attach a SOW file (.txt, .md, or .pdf) to your upload message.');
+    await say('No file detected. Please attach a SOW file (.txt, .md, or .pdf) along with the upload message.');
     return;
   }
   if (message.subtype && message.subtype !== 'file_share') return;
@@ -314,7 +315,7 @@ app.message(/^upload\s+(.+)/i, async ({ message, context, client, say }) => {
   const ext = path.extname(file.name || '').toLowerCase();
 
   if (!['.txt', '.md', '.pdf'].includes(ext)) {
-    await say(`Unsupported file type: \`${ext}\`. Please upload a .txt, .md, or .pdf file.`);
+    await say(`Unsupported file type (\`${ext}\`). Accepted formats: .txt, .md, or .pdf.`);
     return;
   }
 
@@ -325,7 +326,7 @@ app.message(/^upload\s+(.+)/i, async ({ message, context, client, say }) => {
     });
 
     if (!response.ok) {
-      await say(`Failed to download file: ${response.statusText}`);
+      await say(`Unable to download file: ${response.statusText}`);
       return;
     }
 
@@ -343,31 +344,22 @@ app.message(/^upload\s+(.+)/i, async ({ message, context, client, say }) => {
       console.log(`📄 Read file: ${file.name} (${content.length} chars)`);
     }
 
-    // Ensure the sows directory exists
-    if (!fs.existsSync(SOWS_DIR)) {
-      fs.mkdirSync(SOWS_DIR, { recursive: true });
-    }
-
-    // Save to data/sows/<project-name>.md
-    const savePath = path.join(SOWS_DIR, sowFilename);
-    fs.writeFileSync(savePath, content, 'utf-8');
-
-    // Clear the SOW cache so the new file is picked up
-    clearSOWCache();
+    // Save SOW directly to the database
+    await saveSOW(sowFilename, content);
 
     await say(
-      `✅ *SOW uploaded successfully!*\n\n` +
+      `*SOW uploaded successfully.*\n\n` +
       `*Project:* ${projectName}\n` +
       `*File:* \`${sowFilename}\` (${content.length} characters)\n` +
       `*Source:* ${file.name}\n\n` +
-      `To start monitoring a channel, go to the channel and run:\n` +
+      `To begin monitoring a channel, navigate to the channel and run:\n` +
       `\`/scopeguard setup ${projectName} ${sowFilename}\``
     );
 
-    console.log(`✅ SOW saved: ${savePath}`);
+    console.log(`✅ SOW saved to database: ${sowFilename}`);
   } catch (error) {
     console.error('❌ File upload error:', error.message);
-    await say(`Error processing file: ${error.message}`);
+    await say(`An error occurred while processing the file: ${error.message}`);
   }
 });
 
@@ -387,7 +379,7 @@ app.message(async ({ message, client }) => {
   if (!message.text || message.text.trim().length < 10) return;
 
   // Check if this channel has a project mapped
-  const mapping = getProjectMapping(message.channel);
+  const mapping = await getProjectMapping(message.channel);
   if (!mapping) return; // Not a monitored channel
 
   // Don't analyze the PM's own messages (the PM is not the client)
@@ -407,7 +399,7 @@ app.message(async ({ message, client }) => {
     console.log(`🎯 Feature request detected (${Math.round(intent.confidence * 100)}%): "${intent.extractedRequest}"`);
 
     // Step 2: Fetch the SOW
-    const sowText = loadSOW(mapping.sow_filename);
+    const sowText = await loadSOW(mapping.sow_filename);
     if (!sowText) {
       console.error(`⚠️  SOW file missing: ${mapping.sow_filename}`);
       return;
@@ -448,7 +440,7 @@ app.message(async ({ message, client }) => {
     });
 
     // Step 6: Save to audit trail
-    saveDriftLog({
+    await saveDriftLog({
       channelId: message.channel,
       projectId: mapping.project_id,
       messageTs: message.ts,
@@ -474,7 +466,7 @@ app.message(async ({ message, client }) => {
 // on the preceding message or provided text.
 
 app.event('app_mention', async ({ event, client }) => {
-  const mapping = getProjectMapping(event.channel);
+  const mapping = await getProjectMapping(event.channel);
 
   if (!mapping) {
     await client.chat.postEphemeral({
@@ -493,7 +485,7 @@ app.event('app_mention', async ({ event, client }) => {
     await client.chat.postEphemeral({
       channel: event.channel,
       user: event.user,
-      text: 'Tag me with a specific request to check, e.g.:\n`@ScopeGuard Can we add a dark mode to the site?`',
+      text: 'Please include a specific request to evaluate. Example:\n`@ScopeGuard Can we add a dark mode to the site?`',
     });
     return;
   }
@@ -503,18 +495,18 @@ app.event('app_mention', async ({ event, client }) => {
     channel: event.channel,
     user: event.user,
     blocks: renderThinking(),
-    text: 'Analyzing...',
+    text: 'Analyzing request...',
   });
 
   try {
     // Full pipeline
     const intent = { isFeatureRequest: true, confidence: 1.0, extractedRequest: mentionText, reasoning: 'Explicit mention' };
-    const sowText = loadSOW(mapping.sow_filename);
+    const sowText = await loadSOW(mapping.sow_filename);
     if (!sowText) {
       await client.chat.postEphemeral({
         channel: event.channel,
         user: event.user,
-        text: `SOW file \`${mapping.sow_filename}\` is missing.`,
+        text: `The SOW file \`${mapping.sow_filename}\` could not be found. Please re-upload the SOW document.`,
       });
       return;
     }
@@ -540,7 +532,7 @@ app.event('app_mention', async ({ event, client }) => {
       text: `Scope Alert: ${drift.verdict}`,
     });
 
-    saveDriftLog({
+    await saveDriftLog({
       channelId: event.channel,
       projectId: mapping.project_id,
       messageTs: event.ts,
@@ -567,7 +559,7 @@ app.event('app_mention', async ({ event, client }) => {
 // ===========================================
 
 async function runScopeCheckPipeline(client, channelId, userId, textToCheck, respond) {
-  const mapping = getProjectMapping(channelId);
+  const mapping = await getProjectMapping(channelId);
 
   if (!mapping) {
     await respond({
@@ -580,13 +572,13 @@ async function runScopeCheckPipeline(client, channelId, userId, textToCheck, res
 
   try {
     const intent = { isFeatureRequest: true, confidence: 1.0, extractedRequest: textToCheck, reasoning: 'Manual check' };
-    const sowText = loadSOW(mapping.sow_filename);
+    const sowText = await loadSOW(mapping.sow_filename);
 
     if (!sowText) {
       await respond({
         response_type: 'ephemeral',
         replace_original: true,
-        text: `SOW file \`${mapping.sow_filename}\` is missing.`,
+        text: `The SOW file \`${mapping.sow_filename}\` could not be found. Please re-upload the SOW document.`,
       });
       return;
     }
@@ -611,7 +603,7 @@ async function runScopeCheckPipeline(client, channelId, userId, textToCheck, res
       blocks,
     });
 
-    saveDriftLog({
+    await saveDriftLog({
       channelId,
       projectId: mapping.project_id,
       messageTs: Date.now().toString(),
@@ -628,7 +620,7 @@ async function runScopeCheckPipeline(client, channelId, userId, textToCheck, res
     await respond({
       response_type: 'ephemeral',
       replace_original: true,
-      text: `Error: ${error.message}`,
+      text: `An error occurred during analysis: ${error.message}`,
     });
   }
 }
@@ -640,6 +632,11 @@ async function runScopeCheckPipeline(client, channelId, userId, textToCheck, res
 (async () => {
   const authResult = await app.client.auth.test({ token: config.slack.botToken });
   botUserId = authResult.user_id;
+
+  // Health check endpoint for UptimeRobot (keeps Render from sleeping)
+  app.receiver.router.get('/healthz', (req, res) => {
+    res.status(200).send('ok');
+  });
 
   await app.start(process.env.PORT || 3000);
 

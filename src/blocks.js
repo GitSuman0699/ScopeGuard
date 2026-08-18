@@ -1,8 +1,8 @@
 // ===========================================
 // ScopeGuard — Block Kit UI (Ephemeral Alerts)
 // ===========================================
-// Renders beautiful Block Kit messages that are sent
-// ONLY to the PM as ephemeral messages (invisible to client).
+// Renders Block Kit messages that are sent
+// only to the PM as ephemeral messages (invisible to client).
 
 /**
  * Render a "thinking" indicator while the pipeline runs.
@@ -13,7 +13,7 @@ export function renderThinking() {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: '*ScopeGuard* is analyzing this message against the SOW...',
+        text: '*ScopeGuard* is analyzing this request against the project SOW...',
       },
     },
   ];
@@ -30,13 +30,6 @@ export function renderThinking() {
  * @param {string} options.originalMessage - The original client message
  */
 export function renderDriftAlert({ intent, drift, crDraft, projectName, originalMessage }) {
-  const verdictEmoji =
-    drift.verdict === 'IN_SCOPE'
-      ? '🟢'
-      : drift.verdict === 'OUT_OF_SCOPE'
-        ? '🔴'
-        : '🟡';
-
   const verdictLabel =
     drift.verdict === 'IN_SCOPE'
       ? 'In Scope'
@@ -44,12 +37,7 @@ export function renderDriftAlert({ intent, drift, crDraft, projectName, original
         ? 'Out of Scope'
         : 'Ambiguous';
 
-  const riskEmoji =
-    drift.riskLevel === 'HIGH'
-      ? '🔴'
-      : drift.riskLevel === 'MEDIUM'
-        ? '🟡'
-        : '🟢';
+  const riskLabel = drift.riskLevel || 'N/A';
 
   const blocks = [
     // Header
@@ -57,8 +45,8 @@ export function renderDriftAlert({ intent, drift, crDraft, projectName, original
       type: 'header',
       text: {
         type: 'plain_text',
-        text: `${verdictEmoji} Scope Alert — ${verdictLabel}`,
-        emoji: true,
+        text: `Scope Alert: ${verdictLabel}`,
+        emoji: false,
       },
     },
 
@@ -76,7 +64,7 @@ export function renderDriftAlert({ intent, drift, crDraft, projectName, original
         },
         {
           type: 'mrkdwn',
-          text: `*Risk Level:*\n${riskEmoji} ${drift.riskLevel}`,
+          text: `*Risk Level:*\n${riskLabel}`,
         },
       ],
     },
@@ -108,7 +96,7 @@ export function renderDriftAlert({ intent, drift, crDraft, projectName, original
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*SOW Sections Referenced:*\n${drift.relevantSowSections.map((s) => `• ${s}`).join('\n')}`,
+        text: `*SOW Sections Referenced:*\n${drift.relevantSowSections.map((s) => `- ${s}`).join('\n')}`,
       },
     });
   }
@@ -132,7 +120,7 @@ export function renderDriftAlert({ intent, drift, crDraft, projectName, original
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: '*Suggested Reply (copy & modify as needed):*',
+          text: '*Suggested Response (copy and modify as needed):*',
         },
       },
       {
@@ -168,7 +156,7 @@ export function renderInScopeNotice({ intent, drift, projectName }) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `🟢 *In Scope* — "${intent.extractedRequest}" is covered by the *${projectName}* SOW.\n_${drift.reasoning}_`,
+        text: `*In Scope* — "${intent.extractedRequest}" is covered by the *${projectName}* SOW.\n_${drift.reasoning}_`,
       },
     },
     {
@@ -192,7 +180,7 @@ export function renderNoProjectMapped() {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: '⚠️ *No project mapped to this channel.*\n\nUse `/scopeguard setup` to link this channel to a project SOW.',
+        text: '*No project is mapped to this channel.*\n\nRun `/scopeguard setup <project-name> <sow-file>` to link a project SOW.',
       },
     },
   ];
@@ -207,7 +195,7 @@ export function renderSetupSuccess(projectName, sowFilename) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `✅ *Channel linked to project "${projectName}"*\nSOW file: \`${sowFilename}\`\n\nScopeGuard will now monitor messages in this channel for scope drift.`,
+        text: `*Channel linked to project "${projectName}"*\nSOW file: \`${sowFilename}\`\n\nScopeGuard will now monitor messages in this channel for scope drift.`,
       },
     },
   ];
